@@ -219,9 +219,20 @@ const WORDS = [{"lvl": "A1", "theme": "Greetings", "de": "Hallo", "en": "hello",
 
 /* ---------- Persistent storage with safe fallback ---------- */
 const mem = {};
+const HAS_LS = (function(){ try{ localStorage.setItem('__ws_t','1'); localStorage.removeItem('__ws_t'); return true; }catch(e){ return false; } })();
+const PFX = 'wortschatz:';
 const store = {
-  async get(k){ try{ if(window.storage){const r=await window.storage.get(k,false);return r?JSON.parse(r.value):null;} }catch(e){} return (k in mem)?mem[k]:null; },
-  async set(k,v){ mem[k]=v; try{ if(window.storage){await window.storage.set(k,JSON.stringify(v),false);} }catch(e){} }
+  async get(k){
+    try{ if(HAS_LS){ const v=localStorage.getItem(PFX+k); return v!=null?JSON.parse(v):null; } }catch(e){}
+    try{ if(window.storage){ const r=await window.storage.get(k,false); return r?JSON.parse(r.value):null; } }catch(e){}
+    return (k in mem)?mem[k]:null;
+  },
+  async set(k,v){
+    mem[k]=v;
+    let ok=false;
+    try{ if(HAS_LS){ localStorage.setItem(PFX+k, JSON.stringify(v)); ok=true; } }catch(e){}
+    if(!ok){ try{ if(window.storage){ await window.storage.set(k,JSON.stringify(v),false); } }catch(e){} }
+  }
 };
 
 /* ---------- State ---------- */
@@ -306,8 +317,8 @@ function rate(grade){ // 0 again,1 hard,2 good,3 easy
   // XP + goal (count only forward progress, not 'again')
   const gained=grade===0?2:grade===1?4:grade===2?6:8;
   meta.xp+=gained;
-  if(grade>0){meta.todayCount++; if(grade===0)return;}
-  if(grade===0)queue.push(cur); // see it again this session
+  if(grade>0) meta.todayCount++;
+  if(grade===0) queue.push(cur); // see it again this session
   bumpStreakIfGoal();
   save();
   refreshHeader();
@@ -326,6 +337,8 @@ function bumpStreakIfGoal(){
   }
 }
 function save(){store.set('progress',progress);store.set('meta',meta);}
+window.addEventListener('pagehide',()=>{save();store.set('autospeak',autospeak);});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')save();});
 
 /* ---------- Renderers ---------- */
 function lvlColor(l){return l==='A1'?'var(--a1)':l==='A2'?'var(--a2)':'var(--b1)';}
